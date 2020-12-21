@@ -135,6 +135,8 @@ namespace ClangSharp
 
         public bool GenerateCompatibleCode => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GenerateCompatibleCode);
 
+        public bool GenerateCompatibleIfdef => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GenerateCompatibleIfdef);
+
         public bool GenerateExplicitVtbls => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GenerateExplicitVtbls);
 
         public bool GenerateFnptr => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GenerateFnptr);

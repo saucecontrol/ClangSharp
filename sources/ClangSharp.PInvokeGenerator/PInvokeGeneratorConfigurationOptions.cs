@@ -42,5 +42,7 @@ namespace ClangSharp
         ExcludeEnumOperators = 0x00004000,
 
         GenerateAggressiveInlining = 0x00008000,
+
+        GenerateCompatibleIfdef = 0x00010000,
     }
 }

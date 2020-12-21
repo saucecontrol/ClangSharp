@@ -152,6 +152,12 @@ namespace ClangSharp
                         break;
                     }
 
+                    case "generate-compatible-ifdef":
+                    {
+                        configOptions |= PInvokeGeneratorConfigurationOptions.GenerateCompatibleIfdef;
+                        break;
+                    }
+
                     case "generate-fnptr":
                     {
                         configOptions |= PInvokeGeneratorConfigurationOptions.GenerateFnptr;

@@ -1691,26 +1691,17 @@ namespace ClangSharp
                         }
                         else if (generateCompatibleCode)
                         {
-                            _outputBuilder.WriteIndented("fixed (");
-                            _outputBuilder.Write(contextType);
-                            _outputBuilder.Write("* pField = &");
-                            _outputBuilder.Write(contextName);
-                            _outputBuilder.WriteLine(')');
-                            _outputBuilder.WriteBlockStart();
-                            _outputBuilder.WriteIndented("return ref pField->");
-                            _outputBuilder.Write(escapedName);
-
-                            if (isSupportedFixedSizedBufferType)
-                            {
-                                _outputBuilder.Write("[0]");
-                            }
-
-                            _outputBuilder.WriteSemicolon();
-                            _outputBuilder.WriteNewline();
-                            _outputBuilder.WriteBlockEnd();
+                            OutputCompatibleCode();
                         }
                         else
                         {
+                            var generateCompatibleIfdef = _config.GenerateCompatibleIfdef;
+
+                            if (generateCompatibleIfdef)
+                            {
+                                _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
+                            }
+
                             _outputBuilder.WriteIndented("return ");
 
                             if (!isFixedSizedBuffer)
@@ -1748,12 +1739,40 @@ namespace ClangSharp
                             _outputBuilder.Write(')');
                             _outputBuilder.WriteSemicolon();
                             _outputBuilder.WriteNewline();
+
+                            if (generateCompatibleIfdef)
+                            {
+                                _outputBuilder.WriteLine("#else");
+                                OutputCompatibleCode();
+                                _outputBuilder.WriteLine("#endif");
+                            }
                         }
 
                         _outputBuilder.WriteBlockEnd();
                         _outputBuilder.WriteBlockEnd();
 
                         _outputBuilder.NeedsNewline = true;
+
+                        void OutputCompatibleCode()
+                        {
+                            _outputBuilder.WriteIndented("fixed (");
+                            _outputBuilder.Write(contextType);
+                            _outputBuilder.Write("* pField = &");
+                            _outputBuilder.Write(contextName);
+                            _outputBuilder.WriteLine(')');
+                            _outputBuilder.WriteBlockStart();
+                            _outputBuilder.WriteIndented("return ref pField->");
+                            _outputBuilder.Write(escapedName);
+
+                            if (isSupportedFixedSizedBufferType)
+                            {
+                                _outputBuilder.Write("[0]");
+                            }
+
+                            _outputBuilder.WriteSemicolon();
+                            _outputBuilder.WriteNewline();
+                            _outputBuilder.WriteBlockEnd();
+                        }
                     }
                     else if ((declaration is RecordDecl nestedRecordDecl) && nestedRecordDecl.IsAnonymousStructOrUnion)
                     {
@@ -2256,6 +2275,7 @@ namespace ClangSharp
                 _outputBuilder.WriteIndented("public ");
 
                 var generateCompatibleCode = _config.GenerateCompatibleCode;
+                var generateCompatibleIfdef = _config.GenerateCompatibleIfdef;
 
                 if (generateCompatibleCode && !isUnsafeElementType)
                 {
@@ -2263,6 +2283,11 @@ namespace ClangSharp
                 }
                 else if (!isUnsafeElementType)
                 {
+                    if (generateCompatibleIfdef)
+                    {
+                        _outputBuilder.Write("unsafe ");
+                    }
+
                     _outputBuilder.AddUsingDirective("System");
                     _outputBuilder.AddUsingDirective("System.Runtime.InteropServices");
                 }
@@ -2284,14 +2309,7 @@ namespace ClangSharp
 
                     _outputBuilder.WriteIndentedLine("get");
                     _outputBuilder.WriteBlockStart();
-                    _outputBuilder.WriteIndented("fixed (");
-                    _outputBuilder.Write(typeName);
-                    _outputBuilder.WriteLine("* pThis = &e0)");
-                    _outputBuilder.WriteBlockStart();
-                    _outputBuilder.WriteIndented("return ref pThis[index]");
-                    _outputBuilder.WriteSemicolon();
-                    _outputBuilder.WriteNewline();
-                    _outputBuilder.WriteBlockEnd();
+                    OutputCompatibleCode();
                     _outputBuilder.WriteBlockEnd();
                     _outputBuilder.WriteBlockEnd();
                 }
@@ -2308,6 +2326,12 @@ namespace ClangSharp
 
                     _outputBuilder.WriteIndentedLine("get");
                     _outputBuilder.WriteBlockStart();
+
+                    if (generateCompatibleIfdef)
+                    {
+                        _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
+                    }
+
                     _outputBuilder.WriteIndented("return ref AsSpan(");
 
                     if (type.Size == 1)
@@ -2318,10 +2342,23 @@ namespace ClangSharp
                     _outputBuilder.Write(")[index]");
                     _outputBuilder.WriteSemicolon();
                     _outputBuilder.WriteNewline();
+
+                    if (generateCompatibleIfdef)
+                    {
+                        _outputBuilder.WriteLine("#else");
+                        OutputCompatibleCode();
+                        _outputBuilder.WriteLine("#endif");
+                    }
+
                     _outputBuilder.WriteBlockEnd();
                     _outputBuilder.WriteBlockEnd();
 
                     _outputBuilder.NeedsNewline = true;
+
+                    if (generateCompatibleIfdef)
+                    {
+                        _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
+                    }
 
                     if (_config.GenerateAggressiveInlining)
                     {
@@ -2352,9 +2389,26 @@ namespace ClangSharp
                     _outputBuilder.Write(')');
                     _outputBuilder.WriteSemicolon();
                     _outputBuilder.WriteNewline();
+
+                    if (generateCompatibleIfdef)
+                    {
+                        _outputBuilder.WriteLine("#endif");
+                    }
                 }
 
                 _outputBuilder.WriteBlockEnd();
+
+                void OutputCompatibleCode()
+                {
+                    _outputBuilder.WriteIndented("fixed (");
+                    _outputBuilder.Write(typeName);
+                    _outputBuilder.WriteLine("* pThis = &e0)");
+                    _outputBuilder.WriteBlockStart();
+                    _outputBuilder.WriteIndented("return ref pThis[index]");
+                    _outputBuilder.WriteSemicolon();
+                    _outputBuilder.WriteNewline();
+                    _outputBuilder.WriteBlockEnd();
+                }
             }
         }
 

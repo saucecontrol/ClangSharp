@@ -416,7 +416,10 @@ namespace ClangSharp
                 }
                 else
                 {
-                    sw.Write(indentationString);
+                    if (!line.StartsWith("#"))
+                    {
+                        sw.Write(indentationString);
+                    }
                     sw.WriteLine(line);
                 }
             }
