@@ -687,22 +687,22 @@ namespace ClangSharp
 
                 case CXCallingConv.CXCallingConv_X86StdCall:
                 {
-                    return isForFnptr ? "Stdcall" : "StdCall";
+                    return isForFnptr ? "unmanaged[Stdcall]" : "StdCall";
                 }
 
                 case CXCallingConv.CXCallingConv_X86FastCall:
                 {
-                    return isForFnptr ? "Fastcall" : "FastCall";
+                    return isForFnptr ? "unmanaged[Fastcall]" : "FastCall";
                 }
 
                 case CXCallingConv.CXCallingConv_X86ThisCall:
                 {
-                    return isForFnptr ? "Thiscall" : "ThisCall";
+                    return isForFnptr ? "unmanaged[Thiscall]" : "ThisCall";
                 }
 
                 case CXCallingConv.CXCallingConv_Win64:
                 {
-                    return "Winapi";
+                    return isForFnptr ? "unmanaged" : "Winapi";
                 }
 
                 default:
@@ -1376,14 +1376,7 @@ namespace ClangSharp
 
                     if (!isMacroDefinitionRecord)
                     {
-                        nameBuilder.Append(" unmanaged");
-
-                        if (callConv != "Winapi")
-                        {
-                            nameBuilder.Append('[');
-                            nameBuilder.Append(callConv);
-                            nameBuilder.Append(']');
-                        }
+                        nameBuilder.Append(callConv);
                     }
 
                     nameBuilder.Append('<');

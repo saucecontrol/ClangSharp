@@ -452,16 +452,9 @@ namespace ClangSharp
 
                 var callingConventionName = GetCallingConventionName(functionDecl, callConv, name, isForFnptr: false);
 
-                _outputBuilder.WriteIndented("[UnmanagedFunctionPointer");
-
-                if (callingConventionName != "Winapi")
-                {
-                    _outputBuilder.Write("(CallingConvention.");
-                    _outputBuilder.Write(callingConventionName);
-                    _outputBuilder.Write(')');
-                }
-
-                _outputBuilder.WriteLine(']');
+                _outputBuilder.WriteIndented("[UnmanagedFunctionPointer(CallingConvention.");
+                _outputBuilder.Write(callingConventionName);
+                _outputBuilder.WriteLine(")]");
             }
             else if (body is null)
             {
@@ -2393,16 +2386,9 @@ namespace ClangSharp
 
                     var callingConventionName = GetCallingConventionName(typedefDecl, (parentType is AttributedType) ? parentType.Handle.FunctionTypeCallingConv : functionProtoType.CallConv, name, isForFnptr: false);
 
-                    _outputBuilder.WriteIndented("[UnmanagedFunctionPointer");
-
-                    if (callingConventionName != "Winapi")
-                    {
-                        _outputBuilder.Write("(CallingConvention.");
-                        _outputBuilder.Write(callingConventionName);
-                        _outputBuilder.Write(')');
-                    }
-
-                    _outputBuilder.WriteLine(']');
+                    _outputBuilder.WriteIndented("[UnmanagedFunctionPointer(CallingConvention.");
+                    _outputBuilder.Write(callingConventionName);
+                    _outputBuilder.WriteLine(")]");
 
                     var returnType = functionProtoType.ReturnType;
                     var returnTypeName = GetRemappedTypeName(typedefDecl, context: null, returnType, out var nativeTypeName);
