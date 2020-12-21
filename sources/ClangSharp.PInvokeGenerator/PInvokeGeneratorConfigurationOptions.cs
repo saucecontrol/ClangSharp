@@ -44,5 +44,7 @@ namespace ClangSharp
         GenerateAggressiveInlining = 0x00008000,
 
         GenerateCompatibleIfdef = 0x00010000,
+
+        GenerateUnsafeAsPointer = 0x00020000,
     }
 }

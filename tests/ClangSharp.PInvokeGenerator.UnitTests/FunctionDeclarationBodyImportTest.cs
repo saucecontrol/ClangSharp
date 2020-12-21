@@ -594,7 +594,7 @@ namespace ClangSharp.Test
 }}
 ";
 
-            await ValidateGeneratedBindingsAsync(inputContents, expectedOutputContents);
+            await ValidateGeneratedBindingsAsync(inputContents, expectedOutputContents, PInvokeGeneratorConfigurationOptions.GenerateUnsafeAsPointer);
         }
 
         [Fact]

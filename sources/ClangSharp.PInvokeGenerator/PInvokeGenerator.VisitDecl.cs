@@ -1376,7 +1376,9 @@ namespace ClangSharp
 
                 _outputBuilder.WriteIndentation();
 
-                if (_config.GenerateCompatibleCode)
+                var generateUnsafeAsPointer = _config.GenerateUnsafeAsPointer;
+
+                if (!generateUnsafeAsPointer)
                 {
                     _outputBuilder.Write("fixed (");
                     _outputBuilder.Write(escapedCXXRecordDeclName);
@@ -1446,12 +1448,13 @@ namespace ClangSharp
 
                 _outputBuilder.Write('(');
 
-                if (_config.GenerateCompatibleCode)
+                if (!generateUnsafeAsPointer)
                 {
                     _outputBuilder.Write("pThis");
                 }
                 else
                 {
+                    _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
                     _outputBuilder.Write('(');
                     _outputBuilder.Write(escapedCXXRecordDeclName);
                     _outputBuilder.Write("*)Unsafe.AsPointer(ref this)");
@@ -1488,7 +1491,7 @@ namespace ClangSharp
                 _outputBuilder.WriteSemicolon();
                 _outputBuilder.WriteNewline();
 
-                if (_config.GenerateCompatibleCode)
+                if (!generateUnsafeAsPointer)
                 {
                     _outputBuilder.WriteBlockEnd();
                 }
@@ -1755,13 +1758,35 @@ namespace ClangSharp
 
                         void OutputCompatibleCode()
                         {
-                            _outputBuilder.WriteIndented("fixed (");
-                            _outputBuilder.Write(contextType);
-                            _outputBuilder.Write("* pField = &");
-                            _outputBuilder.Write(contextName);
-                            _outputBuilder.WriteLine(')');
-                            _outputBuilder.WriteBlockStart();
-                            _outputBuilder.WriteIndented("return ref pField->");
+                            var generateUnsafeAsPointer = _config.GenerateUnsafeAsPointer;
+
+                            if (!generateUnsafeAsPointer)
+                            {
+                                _outputBuilder.WriteIndented("fixed (");
+                                _outputBuilder.Write(contextType);
+                                _outputBuilder.Write("* pField = &");
+                                _outputBuilder.Write(contextName);
+                                _outputBuilder.WriteLine(')');
+                                _outputBuilder.WriteBlockStart();
+                            }
+
+                            _outputBuilder.WriteIndented("return ref ");
+
+                            if (!generateUnsafeAsPointer)
+                            {
+                                _outputBuilder.Write("pField");
+                            }
+                            else
+                            {
+                                _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
+                                _outputBuilder.Write("((");
+                                _outputBuilder.Write(contextType);
+                                _outputBuilder.Write("*)Unsafe.AsPointer(ref ");
+                                _outputBuilder.Write(contextName);
+                                _outputBuilder.Write("))");
+                            }
+
+                            _outputBuilder.Write("->");
                             _outputBuilder.Write(escapedName);
 
                             if (isSupportedFixedSizedBufferType)
@@ -1771,7 +1796,11 @@ namespace ClangSharp
 
                             _outputBuilder.WriteSemicolon();
                             _outputBuilder.WriteNewline();
-                            _outputBuilder.WriteBlockEnd();
+
+                            if (!generateUnsafeAsPointer)
+                            {
+                                _outputBuilder.WriteBlockEnd();
+                            }
                         }
                     }
                     else if ((declaration is RecordDecl nestedRecordDecl) && nestedRecordDecl.IsAnonymousStructOrUnion)
@@ -2400,14 +2429,37 @@ namespace ClangSharp
 
                 void OutputCompatibleCode()
                 {
-                    _outputBuilder.WriteIndented("fixed (");
-                    _outputBuilder.Write(typeName);
-                    _outputBuilder.WriteLine("* pThis = &e0)");
-                    _outputBuilder.WriteBlockStart();
-                    _outputBuilder.WriteIndented("return ref pThis[index]");
+                    var generateUnsafeAsPointer = _config.GenerateUnsafeAsPointer;
+
+                    if (!generateUnsafeAsPointer)
+                    {
+                        _outputBuilder.WriteIndented("fixed (");
+                        _outputBuilder.Write(typeName);
+                        _outputBuilder.WriteLine("* pThis = &e0)");
+                        _outputBuilder.WriteBlockStart();
+                    }
+
+                    _outputBuilder.WriteIndented("return ref ");
+
+                    if (!generateUnsafeAsPointer)
+                    {
+                        _outputBuilder.Write("pThis");
+                    }
+                    else
+                    {
+                        _outputBuilder.Write("((");
+                        _outputBuilder.Write(typeName);
+                        _outputBuilder.Write("*)Unsafe.AsPointer(ref e0))");
+                    }
+
+                    _outputBuilder.Write("[index]");
                     _outputBuilder.WriteSemicolon();
                     _outputBuilder.WriteNewline();
-                    _outputBuilder.WriteBlockEnd();
+
+                    if (!generateUnsafeAsPointer)
+                    {
+                        _outputBuilder.WriteBlockEnd();
+                    }
                 }
             }
         }

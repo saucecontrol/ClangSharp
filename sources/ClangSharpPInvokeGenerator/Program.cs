@@ -206,6 +206,12 @@ namespace ClangSharp
                         break;
                     }
 
+                    case "generate-unsafe-aspointer":
+                    {
+                        configOptions |= PInvokeGeneratorConfigurationOptions.GenerateUnsafeAsPointer;
+                        break;
+                    }
+
                     case "implicit-vtbls":
                     {
                         configOptions &= ~PInvokeGeneratorConfigurationOptions.GenerateExplicitVtbls;

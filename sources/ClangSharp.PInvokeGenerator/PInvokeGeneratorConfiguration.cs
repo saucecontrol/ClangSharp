@@ -153,6 +153,8 @@ namespace ClangSharp
 
         public bool GenerateUnixTypes => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GenerateUnixTypes);
 
+        public bool GenerateUnsafeAsPointer => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GenerateUnsafeAsPointer);
+
         public string HeaderText { get; }
 
         public string LibraryPath { get;}
