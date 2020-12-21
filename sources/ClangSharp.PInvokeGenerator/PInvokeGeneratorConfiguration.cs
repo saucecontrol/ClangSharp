@@ -89,7 +89,12 @@ namespace ClangSharp
 
             if (!_options.HasFlag(PInvokeGeneratorConfigurationOptions.NoDefaultRemappings))
             {
-                if (GeneratePreviewCodeNint)
+                _remappedNames.Add("int8_t", "sbyte");
+                _remappedNames.Add("int16_t", "short");
+                _remappedNames.Add("int32_t", "int");
+                _remappedNames.Add("int64_t", "long");
+
+                if (GenerateNInt)
                 {
                     _remappedNames.Add("intptr_t", "nint");
                     _remappedNames.Add("ptrdiff_t", "nint");
@@ -103,6 +108,11 @@ namespace ClangSharp
                     _remappedNames.Add("size_t", "UIntPtr");
                     _remappedNames.Add("uintptr_t", "UIntPtr");
                 }
+
+                _remappedNames.Add("uint8_t", "byte");
+                _remappedNames.Add("uint16_t", "ushort");
+                _remappedNames.Add("uint32_t", "uint");
+                _remappedNames.Add("uint64_t", "ulong");
             }
 
             AddRange(_remappedNames, remappedNames);
@@ -127,11 +137,11 @@ namespace ClangSharp
 
         public bool GenerateExplicitVtbls => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GenerateExplicitVtbls);
 
+        public bool GenerateFnptr => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GenerateFnptr);
+
         public bool GenerateMacroBindings => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GenerateMacroBindings);
 
-        public bool GeneratePreviewCodeFnptr => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GeneratePreviewCodeFnptr);
-
-        public bool GeneratePreviewCodeNint => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GeneratePreviewCodeNint);
+        public bool GenerateNInt => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GenerateNInt);
 
         public bool GenerateMultipleFiles => _options.HasFlag(PInvokeGeneratorConfigurationOptions.GenerateMultipleFiles);
 

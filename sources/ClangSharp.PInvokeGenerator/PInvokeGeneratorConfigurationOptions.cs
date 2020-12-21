@@ -17,11 +17,11 @@ namespace ClangSharp
 
         GenerateCompatibleCode = 0x00000008,
 
-        GeneratePreviewCodeNint = 0x00000010,
+        GenerateNInt = 0x00000010,
 
-        GeneratePreviewCodeFnptr = 0x00000020,
+        GenerateFnptr = 0x00000020,
 
-        GeneratePreviewCode = GeneratePreviewCodeNint | GeneratePreviewCodeFnptr,
+        GeneratePreviewCode = GenerateNInt | GenerateFnptr,
 
         LogExclusions = 0x00000040,
 

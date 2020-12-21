@@ -152,9 +152,21 @@ namespace ClangSharp
                         break;
                     }
 
+                    case "generate-fnptr":
+                    {
+                        configOptions |= PInvokeGeneratorConfigurationOptions.GenerateFnptr;
+                        break;
+                    }
+
                     case "generate-macro-bindings":
                     {
                         configOptions |= PInvokeGeneratorConfigurationOptions.GenerateMacroBindings;
+                        break;
+                    }
+
+                    case "generate-nint":
+                    {
+                        configOptions |= PInvokeGeneratorConfigurationOptions.GenerateNInt;
                         break;
                     }
 
@@ -229,20 +241,6 @@ namespace ClangSharp
                     {
                         configOptions &= ~PInvokeGeneratorConfigurationOptions.GenerateCompatibleCode;
                         configOptions |= PInvokeGeneratorConfigurationOptions.GeneratePreviewCode;
-                        break;
-                    }
-
-                    case "preview-codegen-nint":
-                    {
-                        configOptions &= ~PInvokeGeneratorConfigurationOptions.GenerateCompatibleCode;
-                        configOptions |= PInvokeGeneratorConfigurationOptions.GeneratePreviewCodeNint;
-                        break;
-                    }
-
-                    case "preview-codegen-fnptr":
-                    {
-                        configOptions &= ~PInvokeGeneratorConfigurationOptions.GenerateCompatibleCode;
-                        configOptions |= PInvokeGeneratorConfigurationOptions.GeneratePreviewCodeFnptr;
                         break;
                     }
 

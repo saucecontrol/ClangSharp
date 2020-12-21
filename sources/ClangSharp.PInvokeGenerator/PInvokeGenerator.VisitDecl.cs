@@ -428,7 +428,7 @@ namespace ClangSharp
 
             if (type is AttributedType attributedType)
             {
-                type = attributedType.ModifiedType;
+                type = attributedType.EquivalentType;
                 callConv = attributedType.Handle.FunctionTypeCallingConv;
             }
             var functionType = (FunctionType)type;
@@ -446,7 +446,7 @@ namespace ClangSharp
 
             if (isVirtual)
             {
-                Debug.Assert(!_config.GeneratePreviewCodeFnptr);
+                Debug.Assert(!_config.GenerateFnptr);
 
                 _outputBuilder.AddUsingDirective("System.Runtime.InteropServices");
 
@@ -1138,7 +1138,7 @@ namespace ClangSharp
                         _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
                     }
 
-                    if (!_config.GeneratePreviewCodeFnptr)
+                    if (!_config.GenerateFnptr)
                     {
                         _outputBuilder.AddUsingDirective("System");
                         _outputBuilder.AddUsingDirective("System.Runtime.InteropServices");
@@ -1233,7 +1233,7 @@ namespace ClangSharp
                         continue;
                     }
 
-                    if (!_config.GeneratePreviewCodeFnptr)
+                    if (!_config.GenerateFnptr)
                     {
                         _outputBuilder.NeedsNewline = true;
 
@@ -1406,7 +1406,7 @@ namespace ClangSharp
                     _outputBuilder.Write('*');
                 }
 
-                if (!_config.GeneratePreviewCodeFnptr)
+                if (!_config.GenerateFnptr)
                 {
                     _outputBuilder.Write("Marshal.GetDelegateForFunctionPointer<");
                     _outputBuilder.Write(PrefixAndStripName(name));
@@ -1422,7 +1422,7 @@ namespace ClangSharp
                 {
                     var cxxMethodDeclTypeName = GetRemappedTypeName(cxxMethodDecl, cxxRecordDecl, cxxMethodDecl.Type, out var _);
 
-                    if (_config.GeneratePreviewCodeFnptr)
+                    if (_config.GenerateFnptr)
                     {
                         _outputBuilder.Write('(');
                     }
@@ -1433,13 +1433,13 @@ namespace ClangSharp
                     _outputBuilder.Write(vtblIndex);
                     _outputBuilder.Write("])");
 
-                    if (_config.GeneratePreviewCodeFnptr)
+                    if (_config.GenerateFnptr)
                     {
                         _outputBuilder.Write(')');
                     }
                 }
 
-                if (!_config.GeneratePreviewCodeFnptr)
+                if (!_config.GenerateFnptr)
                 {
                     _outputBuilder.Write(')');
                 }
@@ -2372,7 +2372,7 @@ namespace ClangSharp
 
             void ForFunctionProtoType(TypedefDecl typedefDecl, FunctionProtoType functionProtoType, Type parentType)
             {
-                if (_config.GeneratePreviewCodeFnptr)
+                if (_config.GenerateFnptr)
                 {
                     return;
                 }
@@ -2421,7 +2421,7 @@ namespace ClangSharp
             {
                 if (pointeeType is AttributedType attributedType)
                 {
-                    ForPointeeType(typedefDecl, attributedType, attributedType.ModifiedType);
+                    ForPointeeType(typedefDecl, attributedType, attributedType.EquivalentType);
                 }
                 else if (pointeeType is ElaboratedType elaboratedType)
                 {
@@ -2453,7 +2453,7 @@ namespace ClangSharp
                 }
                 else if (underlyingType is AttributedType attributedType)
                 {
-                    ForUnderlyingType(typedefDecl, attributedType.ModifiedType);
+                    ForUnderlyingType(typedefDecl, attributedType.EquivalentType);
                 }
                 else if (underlyingType is BuiltinType builtinType)
                 {
@@ -2494,7 +2494,7 @@ namespace ClangSharp
             {
                 if (type is AttributedType attributedType)
                 {
-                    return GetUndecoratedName(attributedType.ModifiedType);
+                    return GetUndecoratedName(attributedType.EquivalentType);
                 }
                 else if (type is ElaboratedType elaboratedType)
                 {
@@ -2732,7 +2732,7 @@ namespace ClangSharp
             {
                 if (type is AttributedType attributedType)
                 {
-                    return CanBeConstant(attributedType.ModifiedType, initExpr);
+                    return CanBeConstant(attributedType.EquivalentType, initExpr);
                 }
                 else if (type is AutoType autoType)
                 {

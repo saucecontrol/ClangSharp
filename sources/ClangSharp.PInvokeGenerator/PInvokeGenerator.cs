@@ -682,7 +682,7 @@ namespace ClangSharp
             {
                 case CXCallingConv.CXCallingConv_C:
                 {
-                    return "Cdecl";
+                    return isForFnptr ? "unmanaged[Cdecl]" : "Cdecl";
                 }
 
                 case CXCallingConv.CXCallingConv_X86StdCall:
@@ -702,7 +702,21 @@ namespace ClangSharp
 
                 case CXCallingConv.CXCallingConv_Win64:
                 {
-                    return isForFnptr ? "unmanaged" : "Winapi";
+                    if (isForFnptr)
+                    {
+                        if (_config.GenerateCompatibleCode)
+                        {
+                            return _config.GenerateUnixTypes ? "unmanaged[Cdecl]" : "unmanaged[Stdcall]";
+                        }
+                        else
+                        {
+                            return "unmanaged";
+                        }
+                    }
+                    else
+                    {
+                        return "Winapi";
+                    }
                 }
 
                 default:
@@ -933,11 +947,11 @@ namespace ClangSharp
             {
                 if (baseType is AttributedType attributedType)
                 {
-                    baseType = attributedType.ModifiedType;
+                    baseType = attributedType.EquivalentType;
                 }
                 else if (baseType is ElaboratedType elaboratedType)
                 {
-                    baseType = elaboratedType.CanonicalType;
+                    baseType = elaboratedType.NamedType;
                 }
                 else if (baseType is TypedefType typedefType)
                 {
@@ -1150,7 +1164,7 @@ namespace ClangSharp
             }
             else if (type is AttributedType attributedType)
             {
-                name = GetTypeName(cursor, context, attributedType.ModifiedType, out var nativeModifiedTypeName);
+                name = GetTypeName(cursor, context, attributedType.EquivalentType, out var nativeModifiedTypeName);
             }
             else if (type is BuiltinType)
             {
@@ -1192,7 +1206,7 @@ namespace ClangSharp
                     {
                         if (_config.GenerateUnixTypes)
                         {
-                            name = _config.GeneratePreviewCodeNint ? "nuint" : "UIntPtr";
+                            name = _config.GenerateNInt ? "nuint" : "UIntPtr";
                         }
                         else
                         {
@@ -1242,7 +1256,7 @@ namespace ClangSharp
                     {
                         if (_config.GenerateUnixTypes)
                         {
-                            name = _config.GeneratePreviewCodeNint ? "nint" : "IntPtr";
+                            name = _config.GenerateNInt ? "nint" : "IntPtr";
                         }
                         else
                         {
@@ -1350,11 +1364,11 @@ namespace ClangSharp
 
             if (pointeeType is AttributedType attributedType)
             {
-                name = GetTypeNameForPointeeType(cursor, context, attributedType.ModifiedType, out var nativeModifiedTypeName);
+                name = GetTypeNameForPointeeType(cursor, context, attributedType.EquivalentType, out var nativeModifiedTypeName);
             }
             else if (pointeeType is FunctionType functionType)
             {
-                if (_config.GeneratePreviewCodeFnptr && (functionType is FunctionProtoType functionProtoType))
+                if (_config.GenerateFnptr && (functionType is FunctionProtoType functionProtoType))
                 {
                     var remappedName = GetRemappedName(name, cursor, tryRemapOperatorName: false);
                     var callConv = GetCallingConventionName(cursor, functionType.CallConv, remappedName, isForFnptr: true);
@@ -1376,6 +1390,7 @@ namespace ClangSharp
 
                     if (!isMacroDefinitionRecord)
                     {
+                        nameBuilder.Append(' ');
                         nameBuilder.Append(callConv);
                     }
 
@@ -1513,7 +1528,7 @@ namespace ClangSharp
             }
             else if (type is AttributedType attributedType)
             {
-                GetTypeSize(cursor, attributedType.ModifiedType, ref alignment32, ref alignment64, out size32, out size64);
+                GetTypeSize(cursor, attributedType.EquivalentType, ref alignment32, ref alignment64, out size32, out size64);
             }
             else if (type is BuiltinType)
             {
@@ -2271,7 +2286,7 @@ namespace ClangSharp
             }
             else if (type is AttributedType attributedType)
             {
-                return IsFixedSize(cursor, attributedType.ModifiedType);
+                return IsFixedSize(cursor, attributedType.EquivalentType);
             }
             else if (type is BuiltinType)
             {
