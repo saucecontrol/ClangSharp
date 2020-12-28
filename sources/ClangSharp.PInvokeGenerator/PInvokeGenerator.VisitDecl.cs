@@ -346,19 +346,23 @@ namespace ClangSharp
             var type = fieldDecl.Type;
             var typeName = GetRemappedTypeName(fieldDecl, context: null, type, out var nativeTypeName);
 
+            var generateCompatibleCode = _config.GenerateCompatibleCode;
+            var generateCompatibleIfdef = _config.GenerateCompatibleIfdef;
+            var isFnptr = _config.GenerateFnptr && (type.CanonicalType is PointerType pointerType) && (pointerType.PointeeType is FunctionProtoType);
+
             if (fieldDecl.Parent.IsUnion)
             {
                 _outputBuilder.WriteIndentedLine("[FieldOffset(0)]");
             }
             AddNativeTypeNameAttribute(nativeTypeName);
 
-            _outputBuilder.WriteIndented(accessSpecifier);
-            _outputBuilder.Write(' ');
-
-            if (NeedsNewKeyword(name))
+            if (isFnptr && generateCompatibleIfdef)
             {
-                _outputBuilder.Write("new ");
+                _outputBuilder.WriteNewlineIfNeeded();
+                _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
             }
+
+            OutputPrefix();
 
             if (type.CanonicalType is ConstantArrayType constantArrayType)
             {
@@ -395,10 +399,88 @@ namespace ClangSharp
                 _outputBuilder.Write(typeName);
                 _outputBuilder.Write(' ');
                 _outputBuilder.Write(escapedName);
+
+                if (isFnptr && generateCompatibleIfdef)
+                {
+                    if (_config.GenerateUnixTypes)
+                    {
+                        _outputBuilder.ReplaceInCurrentLine("unmanaged[Cdecl]", "unmanaged");
+                    }
+                    else
+                    {
+                        _outputBuilder.ReplaceInCurrentLine("unmanaged[Stdcall]", "unmanaged");
+                    }
+                }
             }
 
             _outputBuilder.WriteSemicolon();
             _outputBuilder.WriteNewline();
+
+            if (isFnptr && (generateCompatibleCode || generateCompatibleIfdef))
+            {
+                _outputBuilder.WriteLine("#else");
+
+                OutputPrefix();
+
+                _outputBuilder.Write("void* _");
+                _outputBuilder.Write(escapedName);
+                _outputBuilder.WriteSemicolon();
+                _outputBuilder.WriteNewline();
+
+                _outputBuilder.WriteNewline();
+                _outputBuilder.WriteIndented(accessSpecifier);
+                _outputBuilder.Write(' ');
+                _outputBuilder.Write(typeName);
+                _outputBuilder.Write(' ');
+                _outputBuilder.WriteLine(escapedName);
+                _outputBuilder.WriteBlockStart();
+
+                if (_config.GenerateAggressiveInlining)
+                {
+                    _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
+                    _outputBuilder.WriteIndentedLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+                }
+
+                _outputBuilder.WriteIndentedLine("get");
+                _outputBuilder.WriteBlockStart();
+                _outputBuilder.WriteIndented("return (");
+                _outputBuilder.Write(typeName);
+                _outputBuilder.Write(")_");
+                _outputBuilder.Write(escapedName);
+                _outputBuilder.WriteSemicolon();
+                _outputBuilder.WriteNewline();
+                _outputBuilder.WriteBlockEnd();
+
+                _outputBuilder.WriteNewline();
+
+                if (_config.GenerateAggressiveInlining)
+                {
+                    _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
+                    _outputBuilder.WriteIndentedLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+                }
+
+                _outputBuilder.WriteIndentedLine("set");
+                _outputBuilder.WriteBlockStart();
+                _outputBuilder.WriteIndented('_');
+                _outputBuilder.Write(escapedName);
+                _outputBuilder.Write(" = value");
+                _outputBuilder.WriteSemicolon();
+                _outputBuilder.WriteNewline();
+                _outputBuilder.WriteBlockEnd();
+                _outputBuilder.WriteBlockEnd();
+                _outputBuilder.WriteLine("#endif");
+            }
+
+            void OutputPrefix()
+            {
+                _outputBuilder.WriteIndented(accessSpecifier);
+                _outputBuilder.Write(' ');
+
+                if (NeedsNewKeyword(name))
+                {
+                    _outputBuilder.Write("new ");
+                }
+            }
         }
 
         private void VisitFunctionDecl(FunctionDecl functionDecl)
@@ -408,7 +490,7 @@ namespace ClangSharp
                 return;
             }
 
-            var accessSppecifier = GetAccessSpecifierName(functionDecl);
+            var accessSpecifier = GetAccessSpecifierName(functionDecl);
             var name = GetRemappedCursorName(functionDecl);
 
             if (!(functionDecl.DeclContext is CXXRecordDecl cxxRecordDecl))
@@ -501,94 +583,53 @@ namespace ClangSharp
 
             AddNativeTypeNameAttribute(nativeTypeName, attributePrefix: "return: ");
 
-            _outputBuilder.WriteIndented(accessSppecifier);
+            var generateCompatibleIfdef = _config.GenerateCompatibleIfdef;
+            var hasFnptrParameter = _config.GenerateFnptr && functionDecl.Parameters.Any((parameter) => (parameter.Type.CanonicalType is PointerType pointerType) && (pointerType.PointeeType is FunctionProtoType));
 
-            if (isVirtual)
+            if (hasFnptrParameter && generateCompatibleIfdef)
             {
-                _outputBuilder.Write(" delegate");
-            }
-            else if ((body is null) || (cxxMethodDecl is null) || cxxMethodDecl.IsStatic)
-            {
-                _outputBuilder.Write(" static");
-
-                if (body is null)
-                {
-                    _outputBuilder.Write(" extern");
-                }
+                _outputBuilder.WriteNewlineIfNeeded();
+                _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
             }
 
-            _outputBuilder.Write(' ');
-
-            if (!isVirtual)
-            {
-                if (NeedsNewKeyword(escapedName, functionDecl.Parameters))
-                {
-                    _outputBuilder.Write("new ");
-                }
-
-                if (IsUnsafe(functionDecl))
-                {
-                    if (cxxRecordDecl is null)
-                    {
-                        _isMethodClassUnsafe = true;
-                    }
-                    else if (!IsUnsafe(cxxRecordDecl))
-                    {
-                        _outputBuilder.Write("unsafe ");
-                    }
-                }
-            }
-
-            var needsReturnFixup = isVirtual && NeedsReturnFixup(cxxMethodDecl);
-
-            if (!(functionDecl is CXXConstructorDecl))
-            {
-                _outputBuilder.Write(returnTypeName);
-
-                if (needsReturnFixup)
-                {
-                    _outputBuilder.Write('*');
-                }
-
-                _outputBuilder.Write(' ');
-            }
-
-            _outputBuilder.Write(escapedName);
-            _outputBuilder.Write('(');
-
-            if (isVirtual)
-            {
-                Debug.Assert(cxxRecordDecl != null);
-
-                if (!IsPrevContextDecl<CXXRecordDecl>(out CXXRecordDecl thisCursor))
-                {
-                    thisCursor = cxxRecordDecl;
-                }
-
-                var cxxRecordDeclName = GetRemappedCursorName(thisCursor);
-                _outputBuilder.Write(EscapeName(cxxRecordDeclName));
-                _outputBuilder.Write("* pThis");
-
-                if (needsReturnFixup)
-                {
-                    _outputBuilder.Write(", ");
-                    _outputBuilder.Write(returnTypeName);
-                    _outputBuilder.Write("* _result");
-                }
-
-                if (functionDecl.Parameters.Any())
-                {
-                    _outputBuilder.Write(", ");
-                }
-            }
-
+            OutputPrefix();
             Visit(functionDecl.Parameters);
-
             _outputBuilder.Write(')');
+
+            if (hasFnptrParameter && generateCompatibleIfdef)
+            {
+                if (_config.GenerateUnixTypes)
+                {
+                    _outputBuilder.ReplaceInCurrentLine("unmanaged[Cdecl]", "unmanaged");
+                }
+                else
+                {
+                    _outputBuilder.ReplaceInCurrentLine("unmanaged[Stdcall]", "unmanaged");
+                }
+
+                if ((body is null) || isVirtual)
+                {
+                    _outputBuilder.WriteSemicolon();
+                }
+
+                _outputBuilder.WriteNewline();
+                _outputBuilder.WriteLine("#else");
+
+                OutputPrefix();
+                Visit(functionDecl.Parameters);
+                _outputBuilder.Write(')');
+
+                _outputBuilder.WriteSemicolon();
+                _outputBuilder.WriteNewline();
+                _outputBuilder.WriteLine("#endif");
+            }
 
             if ((body is null) || isVirtual)
             {
-                _outputBuilder.WriteSemicolon();
+                if (!hasFnptrParameter || !generateCompatibleIfdef)
+                {
+                    _outputBuilder.WriteSemicolon();
+                }
                 _outputBuilder.WriteNewline();
             }
             else
@@ -626,6 +667,90 @@ namespace ClangSharp
             if (cxxRecordDecl is null)
             {
                 StopUsingOutputBuilder();
+            }
+
+            void OutputPrefix()
+            {
+                _outputBuilder.WriteIndented(accessSpecifier);
+
+                if (isVirtual)
+                {
+                    _outputBuilder.Write(" delegate");
+                }
+                else if ((body is null) || (cxxMethodDecl is null) || cxxMethodDecl.IsStatic)
+                {
+                    _outputBuilder.Write(" static");
+
+                    if (body is null)
+                    {
+                        _outputBuilder.Write(" extern");
+                    }
+                }
+
+                _outputBuilder.Write(' ');
+
+                if (!isVirtual)
+                {
+                    if (NeedsNewKeyword(escapedName, functionDecl.Parameters))
+                    {
+                        _outputBuilder.Write("new ");
+                    }
+
+                    if (IsUnsafe(functionDecl))
+                    {
+                        if (cxxRecordDecl is null)
+                        {
+                            _isMethodClassUnsafe = true;
+                        }
+                        else if (!IsUnsafe(cxxRecordDecl))
+                        {
+                            _outputBuilder.Write("unsafe ");
+                        }
+                    }
+                }
+
+                var needsReturnFixup = isVirtual && NeedsReturnFixup(cxxMethodDecl);
+
+                if (!(functionDecl is CXXConstructorDecl))
+                {
+                    _outputBuilder.Write(returnTypeName);
+
+                    if (needsReturnFixup)
+                    {
+                        _outputBuilder.Write('*');
+                    }
+
+                    _outputBuilder.Write(' ');
+                }
+
+                _outputBuilder.Write(escapedName);
+                _outputBuilder.Write('(');
+
+                if (isVirtual)
+                {
+                    Debug.Assert(cxxRecordDecl != null);
+
+                    if (!IsPrevContextDecl(out CXXRecordDecl thisCursor))
+                    {
+                        thisCursor = cxxRecordDecl;
+                    }
+
+                    var cxxRecordDeclName = GetRemappedCursorName(thisCursor);
+                    _outputBuilder.Write(EscapeName(cxxRecordDeclName));
+                    _outputBuilder.Write("* pThis");
+
+                    if (needsReturnFixup)
+                    {
+                        _outputBuilder.Write(", ");
+                        _outputBuilder.Write(returnTypeName);
+                        _outputBuilder.Write("* _result");
+                    }
+
+                    if (functionDecl.Parameters.Any())
+                    {
+                        _outputBuilder.Write(", ");
+                    }
+                }
             }
 
             void VisitCtorInitializers(CXXConstructorDecl cxxConstructorDecl, int firstCtorInitializer, int lastCtorInitializer)
@@ -1301,21 +1426,55 @@ namespace ClangSharp
                 var name = GetRemappedCursorName(cxxMethodDecl);
                 RestoreNameForMultipleHits(cxxMethodDecl, hitsPerName, remappedName);
 
-                _outputBuilder.WriteIndented(accessSpecifier);
-                _outputBuilder.Write(' ');
+                var generateCompatibleIfdef = _config.GenerateFnptr && _config.GenerateCompatibleIfdef;
 
-                if (NeedsNewKeyword(remappedName))
+                if (generateCompatibleIfdef)
                 {
-                    _outputBuilder.Write("new ");
+                    _outputBuilder.WriteNewlineIfNeeded();
+                    _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
                 }
 
-                _outputBuilder.Write(cxxMethodDeclTypeName);
-                _outputBuilder.Write(' ');
+                OutputEntry();
 
-                _outputBuilder.Write(EscapeAndStripName(name));
+                if (generateCompatibleIfdef)
+                {
+                    if (_config.GenerateUnixTypes)
+                    {
+                        _outputBuilder.ReplaceInCurrentLine("unmanaged[Cdecl]", "unmanaged");
+                    }
+                    else
+                    {
+                        _outputBuilder.ReplaceInCurrentLine("unmanaged[Stdcall]", "unmanaged");
+                    }
 
-                _outputBuilder.WriteSemicolon();
+                    _outputBuilder.WriteNewline();
+                    _outputBuilder.WriteLine("#else");
+
+                    OutputEntry();
+
+                    _outputBuilder.WriteNewline();
+                    _outputBuilder.Write("#endif");
+                }
+
                 _outputBuilder.WriteNewline();
+
+                void OutputEntry()
+                {
+                    _outputBuilder.WriteIndented(accessSpecifier);
+                    _outputBuilder.Write(' ');
+
+                    if (NeedsNewKeyword(remappedName))
+                    {
+                        _outputBuilder.Write("new ");
+                    }
+
+                    _outputBuilder.Write(cxxMethodDeclTypeName);
+                    _outputBuilder.Write(' ');
+
+                    _outputBuilder.Write(EscapeAndStripName(name));
+
+                    _outputBuilder.WriteSemicolon();
+                }
             }
 
             void OutputVtblHelperMethod(CXXRecordDecl cxxRecordDecl, CXXMethodDecl cxxMethodDecl, ref int vtblIndex, Dictionary<string, int> hitsPerName)
@@ -1347,44 +1506,60 @@ namespace ClangSharp
                 var returnTypeName = GetRemappedTypeName(cxxMethodDecl, cxxRecordDecl, returnType, out var nativeTypeName);
                 AddNativeTypeNameAttribute(nativeTypeName, attributePrefix: "return: ");
 
-                _outputBuilder.WriteIndented(accessSpecifier);
-                _outputBuilder.Write(' ');
-
                 var remappedName = FixupNameForMultipleHits(cxxMethodDecl, hitsPerName);
                 var name = GetRemappedCursorName(cxxMethodDecl);
                 RestoreNameForMultipleHits(cxxMethodDecl, hitsPerName, remappedName);
 
-                if (NeedsNewKeyword(remappedName, cxxMethodDecl.Parameters))
+                var generateCompatibleIfdef = _config.GenerateCompatibleIfdef;
+                var hasFnptrParameter = _config.GenerateFnptr && cxxMethodDecl.Parameters.Any((parameter) => (parameter.Type.CanonicalType is PointerType pointerType) && (pointerType.PointeeType is FunctionProtoType));
+
+                if (hasFnptrParameter && generateCompatibleIfdef)
                 {
-                    _outputBuilder.Write("new");
-                    _outputBuilder.Write(' ');
+                    _outputBuilder.WriteNewlineIfNeeded();
+                    _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
                 }
 
-                _outputBuilder.Write(returnTypeName);
-                _outputBuilder.Write(' ');
-                _outputBuilder.Write(EscapeAndStripName(remappedName));
-                _outputBuilder.Write('(');
-
+                OutputPrefix();
                 Visit(cxxMethodDecl.Parameters);
+                _outputBuilder.Write(')');
 
-                _outputBuilder.WriteLine(')');
+                if (hasFnptrParameter && generateCompatibleIfdef)
+                {
+                    if (_config.GenerateUnixTypes)
+                    {
+                        _outputBuilder.ReplaceInCurrentLine("unmanaged[Cdecl]", "unmanaged");
+                    }
+                    else
+                    {
+                        _outputBuilder.ReplaceInCurrentLine("unmanaged[Stdcall]", "unmanaged");
+                    }
+
+                    _outputBuilder.WriteNewline();
+                    _outputBuilder.WriteLine("#else");
+
+                    OutputPrefix();
+                    Visit(cxxMethodDecl.Parameters);
+                    _outputBuilder.Write(')');
+
+                    _outputBuilder.WriteNewline();
+                    _outputBuilder.Write("#endif");
+                }
+
+                _outputBuilder.WriteNewline();
                 _outputBuilder.WriteBlockStart();
 
                 var needsReturnFixup = false;
                 var cxxRecordDeclName = GetRemappedCursorName(cxxRecordDecl);
                 var escapedCXXRecordDeclName = EscapeName(cxxRecordDeclName);
 
-                _outputBuilder.WriteIndentation();
-
                 var generateUnsafeAsPointer = _config.GenerateUnsafeAsPointer;
 
                 if (!generateUnsafeAsPointer)
                 {
-                    _outputBuilder.Write("fixed (");
+                    _outputBuilder.WriteIndented("fixed (");
                     _outputBuilder.Write(escapedCXXRecordDeclName);
                     _outputBuilder.WriteLine("* pThis = &this)");
                     _outputBuilder.WriteBlockStart();
-                    _outputBuilder.WriteIndentation();
                 }
 
                 if (returnType.Kind != CXTypeKind.CXType_Void)
@@ -1393,102 +1568,43 @@ namespace ClangSharp
 
                     if (needsReturnFixup)
                     {
-                        _outputBuilder.Write(returnTypeName);
+                        _outputBuilder.WriteIndented(returnTypeName);
                         _outputBuilder.Write(" result");
                         _outputBuilder.WriteSemicolon();
                         _outputBuilder.WriteNewline();
-                        _outputBuilder.WriteIndentation();
                     }
-
-                    _outputBuilder.Write("return ");
                 }
 
-                if (needsReturnFixup)
+                var generateExplicitVtbls = _config.GenerateExplicitVtbls;
+
+                if (hasFnptrParameter && generateCompatibleIfdef && !generateExplicitVtbls)
                 {
-                    _outputBuilder.Write('*');
+                    _outputBuilder.WriteNewlineIfNeeded();
+                    _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
                 }
 
-                if (!_config.GenerateFnptr)
-                {
-                    _outputBuilder.Write("Marshal.GetDelegateForFunctionPointer<");
-                    _outputBuilder.Write(PrefixAndStripName(name));
-                    _outputBuilder.Write(">(");
-                }
+                OutputInvocation(in vtblIndex);
 
-                if (_config.GenerateExplicitVtbls)
+                if (hasFnptrParameter && generateCompatibleIfdef)
                 {
-                    _outputBuilder.Write("lpVtbl->");
-                    _outputBuilder.Write(EscapeAndStripName(name));
-                }
-                else
-                {
-                    var cxxMethodDeclTypeName = GetRemappedTypeName(cxxMethodDecl, cxxRecordDecl, cxxMethodDecl.Type, out var _);
-
-                    if (_config.GenerateFnptr)
+                    if (_config.GenerateUnixTypes)
                     {
-                        _outputBuilder.Write('(');
+                        _outputBuilder.ReplaceInCurrentLine("unmanaged[Cdecl]", "unmanaged");
                     }
-
-                    _outputBuilder.Write('(');
-                    _outputBuilder.Write(cxxMethodDeclTypeName);
-                    _outputBuilder.Write(")(lpVtbl[");
-                    _outputBuilder.Write(vtblIndex);
-                    _outputBuilder.Write("])");
-
-                    if (_config.GenerateFnptr)
+                    else
                     {
-                        _outputBuilder.Write(')');
+                        _outputBuilder.ReplaceInCurrentLine("unmanaged[Stdcall]", "unmanaged");
                     }
+
+                    _outputBuilder.WriteNewline();
+                    _outputBuilder.WriteLine("#else");
+
+                    OutputInvocation(in vtblIndex);
+
+                    _outputBuilder.WriteNewline();
+                    _outputBuilder.Write("#endif");
                 }
 
-                if (!_config.GenerateFnptr)
-                {
-                    _outputBuilder.Write(')');
-                }
-
-                _outputBuilder.Write('(');
-
-                if (!generateUnsafeAsPointer)
-                {
-                    _outputBuilder.Write("pThis");
-                }
-                else
-                {
-                    _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
-                    _outputBuilder.Write('(');
-                    _outputBuilder.Write(escapedCXXRecordDeclName);
-                    _outputBuilder.Write("*)Unsafe.AsPointer(ref this)");
-                }
-
-                if (needsReturnFixup)
-                {
-                    _outputBuilder.Write(", &result");
-                }
-
-                var parmVarDecls = cxxMethodDecl.Parameters;
-
-                for (int index = 0; index < parmVarDecls.Count; index++)
-                {
-                    _outputBuilder.Write(", ");
-
-                    var parmVarDeclName = GetRemappedCursorName(parmVarDecls[index]);
-                    var escapedParmVarDeclName = EscapeName(parmVarDeclName);
-                    _outputBuilder.Write(escapedParmVarDeclName);
-
-                    if (parmVarDeclName.Equals("param"))
-                    {
-                        _outputBuilder.Write(index);
-                    }
-                }
-
-                _outputBuilder.Write(')');
-
-                if (returnTypeName == "bool")
-                {
-                    _outputBuilder.Write(" != 0");
-                }
-
-                _outputBuilder.WriteSemicolon();
                 _outputBuilder.WriteNewline();
 
                 if (!generateUnsafeAsPointer)
@@ -1501,6 +1617,120 @@ namespace ClangSharp
 
                 Debug.Assert(_context.Last == currentContext);
                 _context.RemoveLast();
+
+                void OutputInvocation(in int vtblIndex)
+                {
+                    _outputBuilder.WriteIndentation();
+
+                    if (returnType.Kind != CXTypeKind.CXType_Void)
+                    {
+                        _outputBuilder.Write("return ");
+
+                        if (needsReturnFixup)
+                        {
+                            _outputBuilder.Write('*');
+                        }
+                    }
+
+                    if (!_config.GenerateFnptr)
+                    {
+                        _outputBuilder.Write("Marshal.GetDelegateForFunctionPointer<");
+                        _outputBuilder.Write(PrefixAndStripName(name));
+                        _outputBuilder.Write(">(");
+                    }
+
+                    if (generateExplicitVtbls)
+                    {
+                        _outputBuilder.Write("lpVtbl->");
+                        _outputBuilder.Write(EscapeAndStripName(name));
+                    }
+                    else
+                    {
+                        var cxxMethodDeclTypeName = GetRemappedTypeName(cxxMethodDecl, cxxRecordDecl, cxxMethodDecl.Type, out var _);
+
+                        if (_config.GenerateFnptr)
+                        {
+                            _outputBuilder.Write('(');
+                        }
+
+                        _outputBuilder.Write('(');
+                        _outputBuilder.Write(cxxMethodDeclTypeName);
+                        _outputBuilder.Write(")(lpVtbl[");
+                        _outputBuilder.Write(vtblIndex);
+                        _outputBuilder.Write("])");
+
+                        if (_config.GenerateFnptr)
+                        {
+                            _outputBuilder.Write(')');
+                        }
+                    }
+
+                    if (!_config.GenerateFnptr)
+                    {
+                        _outputBuilder.Write(')');
+                    }
+
+                    _outputBuilder.Write('(');
+
+                    if (!generateUnsafeAsPointer)
+                    {
+                        _outputBuilder.Write("pThis");
+                    }
+                    else
+                    {
+                        _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
+                        _outputBuilder.Write('(');
+                        _outputBuilder.Write(escapedCXXRecordDeclName);
+                        _outputBuilder.Write("*)Unsafe.AsPointer(ref this)");
+                    }
+
+                    if (needsReturnFixup)
+                    {
+                        _outputBuilder.Write(", &result");
+                    }
+
+                    var parmVarDecls = cxxMethodDecl.Parameters;
+
+                    for (int index = 0; index < parmVarDecls.Count; index++)
+                    {
+                        _outputBuilder.Write(", ");
+
+                        var parmVarDeclName = GetRemappedCursorName(parmVarDecls[index]);
+                        var escapedParmVarDeclName = EscapeName(parmVarDeclName);
+                        _outputBuilder.Write(escapedParmVarDeclName);
+
+                        if (parmVarDeclName.Equals("param"))
+                        {
+                            _outputBuilder.Write(index);
+                        }
+                    }
+
+                    _outputBuilder.Write(')');
+
+                    if (returnTypeName == "bool")
+                    {
+                        _outputBuilder.Write(" != 0");
+                    }
+
+                    _outputBuilder.WriteSemicolon();
+                }
+
+                void OutputPrefix()
+                {
+                    _outputBuilder.WriteIndented(accessSpecifier);
+                    _outputBuilder.Write(' ');
+
+                    if (NeedsNewKeyword(remappedName, cxxMethodDecl.Parameters))
+                    {
+                        _outputBuilder.Write("new");
+                        _outputBuilder.Write(' ');
+                    }
+
+                    _outputBuilder.Write(returnTypeName);
+                    _outputBuilder.Write(' ');
+                    _outputBuilder.Write(EscapeAndStripName(remappedName));
+                    _outputBuilder.Write('(');
+                }
             }
 
             void OutputVtblHelperMethods(CXXRecordDecl rootCxxRecordDecl, CXXRecordDecl cxxRecordDecl, ref int index, Dictionary<string, int> hitsPerName)
@@ -1603,7 +1833,12 @@ namespace ClangSharp
                         var isFixedSizedBuffer = (type.CanonicalType is ConstantArrayType);
                         var generateCompatibleCode = _config.GenerateCompatibleCode;
 
-                        if (!fieldDecl.IsBitField && (!isFixedSizedBuffer || generateCompatibleCode))
+                        if (_config.GenerateUnsafeAsPointer)
+                        {
+                            _outputBuilder.Write("unsafe ");
+                        }
+
+                        if (!fieldDecl.IsBitField && !isFixedSizedBuffer)
                         {
                             _outputBuilder.Write("ref ");
                         }
@@ -1628,22 +1863,13 @@ namespace ClangSharp
 
                         if (isFixedSizedBuffer)
                         {
-                            if (!generateCompatibleCode)
-                            {
-                                _outputBuilder.AddUsingDirective("System");
-                                _outputBuilder.Write("Span<");
-                            }
-                            else if(!isSupportedFixedSizedBufferType)
-                            {
-                                _outputBuilder.Write(contextType);
-                                _outputBuilder.Write('.');
-                                typeName = GetArtificialFixedSizedBufferName(fieldDecl);
-                            }
+                            _outputBuilder.AddUsingDirective("System");
+                            _outputBuilder.Write("Span<");
                         }
 
                         _outputBuilder.Write(typeName);
 
-                        if (isFixedSizedBuffer && !generateCompatibleCode)
+                        if (isFixedSizedBuffer)
                         {
                             _outputBuilder.Write('>');
                         }
@@ -1692,6 +1918,16 @@ namespace ClangSharp
                             _outputBuilder.WriteSemicolon();
                             _outputBuilder.WriteNewline();
                         }
+                        else if (isFixedSizedBuffer && !isSupportedFixedSizedBufferType)
+                        {
+                            _outputBuilder.WriteIndented("return ");
+                            _outputBuilder.Write(contextName);
+                            _outputBuilder.Write('.');
+                            _outputBuilder.Write(escapedName);
+                            _outputBuilder.Write(".AsSpan()");
+                            _outputBuilder.WriteSemicolon();
+                            _outputBuilder.WriteNewline();
+                        }
                         else if (generateCompatibleCode)
                         {
                             OutputCompatibleCode();
@@ -1724,15 +1960,9 @@ namespace ClangSharp
 
                             if (isFixedSizedBuffer)
                             {
-                                if (isSupportedFixedSizedBufferType)
-                                {
-                                    _outputBuilder.Write("[0], ");
-                                    _outputBuilder.Write(((ConstantArrayType)type.CanonicalType).Size);
-                                }
-                                else
-                                {
-                                    _outputBuilder.Write(".AsSpan(");
-                                }
+                                Debug.Assert(isSupportedFixedSizedBufferType);
+                                _outputBuilder.Write("[0], ");
+                                _outputBuilder.Write(((ConstantArrayType)type.CanonicalType).Size);
                             }
                             else
                             {
@@ -1770,7 +2000,18 @@ namespace ClangSharp
                                 _outputBuilder.WriteBlockStart();
                             }
 
-                            _outputBuilder.WriteIndented("return ref ");
+                            _outputBuilder.WriteIndented("return ");
+
+                            if (isFixedSizedBuffer)
+                            {
+                                _outputBuilder.Write("new Span<");
+                                _outputBuilder.Write(typeName);
+                                _outputBuilder.Write(">(");
+                            }
+                            else
+                            {
+                                _outputBuilder.Write("ref ");
+                            }
 
                             if (!generateUnsafeAsPointer)
                             {
@@ -1791,7 +2032,9 @@ namespace ClangSharp
 
                             if (isSupportedFixedSizedBufferType)
                             {
-                                _outputBuilder.Write("[0]");
+                                _outputBuilder.Write(", ");
+                                _outputBuilder.Write(((ConstantArrayType)type.CanonicalType).Size);
+                                _outputBuilder.Write(')');
                             }
 
                             _outputBuilder.WriteSemicolon();
@@ -2300,67 +2543,33 @@ namespace ClangSharp
                     }
                 }
 
-                _outputBuilder.NeedsNewline = true;
-                _outputBuilder.WriteIndented("public ");
-
                 var generateCompatibleCode = _config.GenerateCompatibleCode;
                 var generateCompatibleIfdef = _config.GenerateCompatibleIfdef;
+                var generateUnsafeAsPointer = _config.GenerateUnsafeAsPointer;
 
-                if (generateCompatibleCode && !isUnsafeElementType)
-                {
-                    _outputBuilder.Write("unsafe ");
-                }
-                else if (!isUnsafeElementType)
-                {
-                    if (generateCompatibleIfdef)
-                    {
-                        _outputBuilder.Write("unsafe ");
-                    }
+                _outputBuilder.NeedsNewline = true;
 
-                    _outputBuilder.AddUsingDirective("System");
-                    _outputBuilder.AddUsingDirective("System.Runtime.InteropServices");
-                }
+                _outputBuilder.WriteIndented("public ");
+                OutputUnsafeKeywordIfNeeded();
 
                 _outputBuilder.Write("ref ");
                 _outputBuilder.Write(typeName);
                 _outputBuilder.Write(' ');
 
-                if (generateCompatibleCode || isUnsafeElementType)
+                _outputBuilder.WriteLine("this[int index]");
+                _outputBuilder.WriteBlockStart();
+
+                if (_config.GenerateAggressiveInlining)
                 {
-                    _outputBuilder.WriteLine("this[int index]");
-                    _outputBuilder.WriteBlockStart();
-
-                    if (_config.GenerateAggressiveInlining)
-                    {
-                        _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
-                        _outputBuilder.WriteIndentedLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
-                    }
-
-                    _outputBuilder.WriteIndentedLine("get");
-                    _outputBuilder.WriteBlockStart();
-                    OutputCompatibleCode();
-                    _outputBuilder.WriteBlockEnd();
-                    _outputBuilder.WriteBlockEnd();
+                    _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
+                    _outputBuilder.WriteIndentedLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
                 }
-                else
+
+                _outputBuilder.WriteIndentedLine("get");
+                _outputBuilder.WriteBlockStart();
+
+                if (!isUnsafeElementType)
                 {
-                    _outputBuilder.WriteLine("this[int index]");
-                    _outputBuilder.WriteBlockStart();
-
-                    if (_config.GenerateAggressiveInlining)
-                    {
-                        _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
-                        _outputBuilder.WriteIndentedLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
-                    }
-
-                    _outputBuilder.WriteIndentedLine("get");
-                    _outputBuilder.WriteBlockStart();
-
-                    if (generateCompatibleIfdef)
-                    {
-                        _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
-                    }
-
                     _outputBuilder.WriteIndented("return ref AsSpan(");
 
                     if (type.Size == 1)
@@ -2371,66 +2580,9 @@ namespace ClangSharp
                     _outputBuilder.Write(")[index]");
                     _outputBuilder.WriteSemicolon();
                     _outputBuilder.WriteNewline();
-
-                    if (generateCompatibleIfdef)
-                    {
-                        _outputBuilder.WriteLine("#else");
-                        OutputCompatibleCode();
-                        _outputBuilder.WriteLine("#endif");
-                    }
-
-                    _outputBuilder.WriteBlockEnd();
-                    _outputBuilder.WriteBlockEnd();
-
-                    _outputBuilder.NeedsNewline = true;
-
-                    if (generateCompatibleIfdef)
-                    {
-                        _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
-                    }
-
-                    if (_config.GenerateAggressiveInlining)
-                    {
-                        _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
-                        _outputBuilder.WriteIndentedLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
-                    }
-
-                    _outputBuilder.WriteIndented("public Span<");
-                    _outputBuilder.Write(typeName);
-                    _outputBuilder.Write("> AsSpan(");
-
-                    if (type.Size == 1)
-                    {
-                        _outputBuilder.Write("int length");
-                    }
-
-                    _outputBuilder.Write(") => MemoryMarshal.CreateSpan(ref e0, ");
-
-                    if (type.Size == 1)
-                    {
-                        _outputBuilder.Write("length");
-                    }
-                    else
-                    {
-                        _outputBuilder.Write(totalSize);
-                    }
-
-                    _outputBuilder.Write(')');
-                    _outputBuilder.WriteSemicolon();
-                    _outputBuilder.WriteNewline();
-
-                    if (generateCompatibleIfdef)
-                    {
-                        _outputBuilder.WriteLine("#endif");
-                    }
                 }
-
-                _outputBuilder.WriteBlockEnd();
-
-                void OutputCompatibleCode()
+                else
                 {
-                    var generateUnsafeAsPointer = _config.GenerateUnsafeAsPointer;
-
                     if (!generateUnsafeAsPointer)
                     {
                         _outputBuilder.WriteIndented("fixed (");
@@ -2449,7 +2601,7 @@ namespace ClangSharp
                     {
                         _outputBuilder.Write("((");
                         _outputBuilder.Write(typeName);
-                        _outputBuilder.Write("*)Unsafe.AsPointer(ref e0))");
+                        _outputBuilder.Write("*)Unsafe.AsPointer(ref this))");
                     }
 
                     _outputBuilder.Write("[index]");
@@ -2459,6 +2611,136 @@ namespace ClangSharp
                     if (!generateUnsafeAsPointer)
                     {
                         _outputBuilder.WriteBlockEnd();
+                    }
+                }
+
+                _outputBuilder.WriteBlockEnd();
+                _outputBuilder.WriteBlockEnd();
+
+                if (!isUnsafeElementType)
+                {
+                    _outputBuilder.NeedsNewline = true;
+
+                    if (_config.GenerateAggressiveInlining)
+                    {
+                        _outputBuilder.AddUsingDirective("System.Runtime.CompilerServices");
+                        _outputBuilder.WriteIndentedLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+                    }
+
+                    _outputBuilder.WriteIndented("public ");
+                    OutputUnsafeKeywordIfNeeded();
+
+                    _outputBuilder.Write("Span<");
+                    _outputBuilder.Write(typeName);
+                    _outputBuilder.Write("> AsSpan(");
+
+                    if (type.Size == 1)
+                    {
+                        _outputBuilder.Write("int length");
+                    }
+
+                    _outputBuilder.WriteLine(')');
+                    _outputBuilder.WriteBlockStart();
+
+                    if (generateCompatibleCode)
+                    {
+                        OutputCompatibleAsSpanCode();
+                    }
+                    else
+                    {
+                        if (generateCompatibleIfdef)
+                        {
+                            _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
+                        }
+
+                        _outputBuilder.WriteIndented("return MemoryMarshal.CreateSpan(ref e0, ");
+
+                        if (type.Size == 1)
+                        {
+                            _outputBuilder.Write("length");
+                        }
+                        else
+                        {
+                            _outputBuilder.Write(totalSize);
+                        }
+
+                        _outputBuilder.Write(')');
+                        _outputBuilder.WriteSemicolon();
+                        _outputBuilder.WriteNewline();
+
+                        if (generateCompatibleIfdef)
+                        {
+                            _outputBuilder.WriteLine("#else");
+                            OutputCompatibleAsSpanCode();
+                            _outputBuilder.WriteLine("#endif");
+                        }
+                    }
+
+                    _outputBuilder.WriteBlockEnd();
+                }
+
+                _outputBuilder.WriteBlockEnd();
+
+                void OutputCompatibleAsSpanCode()
+                {
+                    if (!generateUnsafeAsPointer)
+                    {
+                        _outputBuilder.WriteIndented("fixed (");
+                        _outputBuilder.Write(typeName);
+                        _outputBuilder.WriteLine("* pThis = &e0)");
+                        _outputBuilder.WriteBlockStart();
+                    }
+
+                    _outputBuilder.WriteIndented("return new Span<");
+                    _outputBuilder.Write(typeName);
+                    _outputBuilder.Write(">(");
+
+                    if (!generateUnsafeAsPointer)
+                    {
+                        _outputBuilder.Write("pThis");
+                    }
+                    else
+                    {
+                        _outputBuilder.Write("(");
+                        _outputBuilder.Write(typeName);
+                        _outputBuilder.Write("*)Unsafe.AsPointer(ref this)");
+                    }
+                    _outputBuilder.Write(", ");
+
+                    if (type.Size == 1)
+                    {
+                        _outputBuilder.Write("length");
+                    }
+                    else
+                    {
+                        _outputBuilder.Write(totalSize);
+                    }
+
+                    _outputBuilder.Write(')');
+                    _outputBuilder.WriteSemicolon();
+                    _outputBuilder.WriteNewline();
+
+                    if (!generateUnsafeAsPointer)
+                    {
+                        _outputBuilder.WriteBlockEnd();
+                    }
+                }
+
+                void OutputUnsafeKeywordIfNeeded()
+                {
+                    if (generateCompatibleCode && !isUnsafeElementType)
+                    {
+                        _outputBuilder.Write("unsafe ");
+                    }
+                    else if (!isUnsafeElementType)
+                    {
+                        if (generateCompatibleIfdef)
+                        {
+                            _outputBuilder.Write("unsafe ");
+                        }
+
+                        _outputBuilder.AddUsingDirective("System");
+                        _outputBuilder.AddUsingDirective("System.Runtime.InteropServices");
                     }
                 }
             }
@@ -2695,96 +2977,51 @@ namespace ClangSharp
 
                 AddNativeTypeNameAttribute(nativeTypeName);
 
-                _outputBuilder.WriteIndented(accessSpecifier);
-                _outputBuilder.Write(' ');
+                var isFnptr = false;
+                var hasFnptr = false;
+
+                if (_config.GenerateFnptr && (type.CanonicalType is PointerType pointerType) && (pointerType.PointeeType is FunctionProtoType functionProtoType))
+                {
+                    isFnptr = true;
+                    hasFnptr = functionProtoType.ParamTypes.Any((paramType) => (paramType.CanonicalType is PointerType paramPointerType) && (paramPointerType.PointeeType is FunctionProtoType));
+                }
+
+                var generateCompatibleIfdef = _config.GenerateCompatibleIfdef;
+
+                if (hasFnptr && generateCompatibleIfdef)
+                {
+                    _outputBuilder.WriteNewlineIfNeeded();
+                    _outputBuilder.WriteLine("#if !NETSTANDARD2_0");
+                }
 
                 var isProperty = false;
 
-                if (IsStmtAsWritten<StringLiteral>(varDecl.Init, out var stringLiteral, removeParens: true))
+                OutputDeclaration();
+
+                if (hasFnptr && generateCompatibleIfdef)
                 {
-                    switch (stringLiteral.Kind)
+                    if (_config.GenerateUnixTypes)
                     {
-                        case CX_CharacterKind.CX_CLK_Ascii:
-                        case CX_CharacterKind.CX_CLK_UTF8:
-                        {
-                            _outputBuilder.AddUsingDirective("System");
-                            _outputBuilder.Write("static ");
-
-                            typeName = "ReadOnlySpan<byte>";
-                            isProperty = true;
-                            break;
-                        }
-
-                        case CX_CharacterKind.CX_CLK_Wide:
-                        {
-                            if (_config.GenerateUnixTypes)
-                            {
-                                goto default;
-                            }
-
-                            goto case CX_CharacterKind.CX_CLK_UTF16;
-                        }
-
-                        case CX_CharacterKind.CX_CLK_UTF16:
-                        {
-                            _outputBuilder.Write("const ");
-
-                            typeName = "string";
-                            break;
-                        }
-
-                        default:
-                        {
-                            AddDiagnostic(DiagnosticLevel.Error, $"Unsupported string literal kind: '{stringLiteral.Kind}'. Generated bindings may be incomplete.", stringLiteral);
-                            break;
-                        }
+                        _outputBuilder.ReplaceInCurrentLine("unmanaged[Cdecl]", "unmanaged");
                     }
-                }
-                else if ((type.IsLocalConstQualified || isMacroDefinitionRecord) && CanBeConstant(type, varDecl.Init))
-                {
-                    _outputBuilder.Write("const ");
-                }
-                else if ((varDecl.StorageClass == CX_StorageClass.CX_SC_Static) || openedOutputBuilder)
-                {
-                    _outputBuilder.Write("static ");
-
-                    if (type.IsLocalConstQualified || isMacroDefinitionRecord)
+                    else
                     {
-                        _outputBuilder.Write("readonly ");
-                    }
-                }
-
-                _outputBuilder.Write(typeName);
-
-                if (type is ArrayType)
-                {
-                    _outputBuilder.Write("[]");
-                }
-
-                _outputBuilder.Write(' ');
-
-                _outputBuilder.Write(escapedName);
-
-                if (varDecl.HasInit)
-                {
-                    _outputBuilder.Write(" =");
-
-                    if (isProperty)
-                    {
-                        _outputBuilder.Write('>');
+                        _outputBuilder.ReplaceInCurrentLine("unmanaged[Stdcall]", "unmanaged");
                     }
 
-                    _outputBuilder.Write(' ');
+                    OutputInitializer();
 
-                    if ((type.CanonicalType is PointerType pointerType) && (pointerType.PointeeType.CanonicalType is FunctionType) && isMacroDefinitionRecord)
-                    {
-                        _outputBuilder.Write('&');
-                    }
-                    UncheckStmt(typeName, varDecl.Init);
+                    _outputBuilder.WriteLine("#else");
+
+                    OutputDeclaration();
+                    OutputInitializer();
+
+                    _outputBuilder.WriteLine("#endif");
                 }
-
-                _outputBuilder.WriteSemicolon();
-                _outputBuilder.WriteNewline();
+                else
+                {
+                    OutputInitializer();
+                }
 
                 if (openedOutputBuilder)
                 {
@@ -2793,6 +3030,101 @@ namespace ClangSharp
                 else
                 {
                     _outputBuilder.NeedsNewline = true;
+                }
+
+                void OutputDeclaration()
+                {
+                    _outputBuilder.WriteIndented(accessSpecifier);
+                    _outputBuilder.Write(' ');
+
+                    if (IsStmtAsWritten<StringLiteral>(varDecl.Init, out var stringLiteral, removeParens: true))
+                    {
+                        switch (stringLiteral.Kind)
+                        {
+                            case CX_CharacterKind.CX_CLK_Ascii:
+                            case CX_CharacterKind.CX_CLK_UTF8:
+                            {
+                                _outputBuilder.AddUsingDirective("System");
+                                _outputBuilder.Write("static ");
+
+                                typeName = "ReadOnlySpan<byte>";
+                                isProperty = true;
+                                break;
+                            }
+
+                            case CX_CharacterKind.CX_CLK_Wide:
+                            {
+                                if (_config.GenerateUnixTypes)
+                                {
+                                    goto default;
+                                }
+
+                                goto case CX_CharacterKind.CX_CLK_UTF16;
+                            }
+
+                            case CX_CharacterKind.CX_CLK_UTF16:
+                            {
+                                _outputBuilder.Write("const ");
+
+                                typeName = "string";
+                                break;
+                            }
+
+                            default:
+                            {
+                                AddDiagnostic(DiagnosticLevel.Error, $"Unsupported string literal kind: '{stringLiteral.Kind}'. Generated bindings may be incomplete.", stringLiteral);
+                                break;
+                            }
+                        }
+                    }
+                    else if ((type.IsLocalConstQualified || isMacroDefinitionRecord) && CanBeConstant(type, varDecl.Init))
+                    {
+                        _outputBuilder.Write("const ");
+                    }
+                    else if ((varDecl.StorageClass == CX_StorageClass.CX_SC_Static) || openedOutputBuilder)
+                    {
+                        _outputBuilder.Write("static ");
+
+                        if (type.IsLocalConstQualified || isMacroDefinitionRecord)
+                        {
+                            _outputBuilder.Write("readonly ");
+                        }
+                    }
+
+                    _outputBuilder.Write(typeName);
+
+                    if (type is ArrayType)
+                    {
+                        _outputBuilder.Write("[]");
+                    }
+
+                    _outputBuilder.Write(' ');
+
+                    _outputBuilder.Write(escapedName);
+                }
+
+                void OutputInitializer()
+                {
+                    if (varDecl.HasInit)
+                    {
+                        _outputBuilder.Write(" =");
+
+                        if (isProperty)
+                        {
+                            _outputBuilder.Write('>');
+                        }
+
+                        _outputBuilder.Write(' ');
+
+                        if (isFnptr && isMacroDefinitionRecord)
+                        {
+                            _outputBuilder.Write('&');
+                        }
+                        UncheckStmt(typeName, varDecl.Init);
+                    }
+
+                    _outputBuilder.WriteSemicolon();
+                    _outputBuilder.WriteNewline();
                 }
             }
             else

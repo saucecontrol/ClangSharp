@@ -33,6 +33,8 @@ namespace ClangSharp
 
         public IEnumerable<string> Contents => _contents;
 
+        public string CurrentLine => _currentLine.ToString();
+
         public string IndentationString => _indentationString;
 
         public bool IsTestOutput => _isTestOutput;
@@ -72,6 +74,11 @@ namespace ClangSharp
         public void IncreaseIndentation()
         {
             _indentationLevel++;
+        }
+
+        public void ReplaceInCurrentLine(string oldValue, string newValue)
+        {
+            _currentLine.Replace(oldValue, newValue);
         }
 
         public void WriteBlockStart()

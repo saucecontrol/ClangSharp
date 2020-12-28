@@ -581,10 +581,15 @@ struct MyOtherStruct
             {{
                 get
                 {{
-                    fixed (MyStruct* pThis = &e0)
-                    {{
-                        return ref pThis[index];
-                    }}
+                    return ref AsSpan()[index];
+                }}
+            }}
+
+            public unsafe Span<MyStruct> AsSpan()
+            {{
+                fixed (MyStruct* pThis = &e0)
+                {{
+                    return new Span<MyStruct>(pThis, 3);
                 }}
             }}
         }}
@@ -642,7 +647,10 @@ namespace ClangSharp.Test
                 }}
             }}
 
-            public Span<MyStruct> AsSpan() => MemoryMarshal.CreateSpan(ref e0, 3);
+            public Span<MyStruct> AsSpan()
+            {{
+                return MemoryMarshal.CreateSpan(ref e0, 3);
+            }}
         }}
     }}
 }}
@@ -730,7 +738,10 @@ namespace ClangSharp.Test
                 }}
             }}
 
-            public Span<MyStruct> AsSpan() => MemoryMarshal.CreateSpan(ref e0, 24);
+            public Span<MyStruct> AsSpan()
+            {{
+                return MemoryMarshal.CreateSpan(ref e0, 24);
+            }}
         }}
     }}
 }}
@@ -788,7 +799,10 @@ namespace ClangSharp.Test
                 }}
             }}
 
-            public Span<MyStruct> AsSpan() => MemoryMarshal.CreateSpan(ref e0, 3);
+            public Span<MyStruct> AsSpan()
+            {{
+                return MemoryMarshal.CreateSpan(ref e0, 3);
+            }}
         }}
     }}
 }}
@@ -840,10 +854,15 @@ struct MyOtherStruct
             {{
                 get
                 {{
-                    fixed (MyStruct* pThis = &e0)
-                    {{
-                        return ref pThis[index];
-                    }}
+                    return ref AsSpan()[index];
+                }}
+            }}
+
+            public unsafe Span<MyStruct> AsSpan()
+            {{
+                fixed (MyStruct* pThis = &e0)
+                {{
+                    return new Span<MyStruct>(pThis, 3);
                 }}
             }}
         }}
@@ -904,7 +923,10 @@ namespace ClangSharp.Test
                 }}
             }}
 
-            public Span<MyStruct> AsSpan() => MemoryMarshal.CreateSpan(ref e0, 3);
+            public Span<MyStruct> AsSpan()
+            {{
+                return MemoryMarshal.CreateSpan(ref e0, 3);
+            }}
         }}
     }}
 }}
@@ -1290,7 +1312,10 @@ namespace ClangSharp.Test
                     }}
                 }}
 
-                public Span<MyUnion> AsSpan() => MemoryMarshal.CreateSpan(ref e0, 4);
+                public Span<MyUnion> AsSpan()
+                {{
+                    return MemoryMarshal.CreateSpan(ref e0, 4);
+                }}
             }}
         }}
     }}
@@ -1332,7 +1357,8 @@ struct MyStruct
 }};
 ";
 
-            var expectedOutputContents = $@"using System.Runtime.InteropServices;
+            var expectedOutputContents = $@"using System;
+using System.Runtime.InteropServices;
 
 namespace ClangSharp.Test
 {{
@@ -1385,25 +1411,22 @@ namespace ClangSharp.Test
             }}
         }}
 
-        public ref {expectedManagedType} buffer1
+        public Span<{expectedManagedType}> buffer1
         {{
             get
             {{
                 fixed (_Anonymous_e__Struct* pField = &Anonymous)
                 {{
-                    return ref pField->buffer1[0];
+                    return new Span<{expectedManagedType}>(pField->buffer1, 4);
                 }}
             }}
         }}
 
-        public ref _Anonymous_e__Struct._buffer2_e__FixedBuffer buffer2
+        public Span<MyUnion> buffer2
         {{
             get
             {{
-                fixed (_Anonymous_e__Struct* pField = &Anonymous)
-                {{
-                    return ref pField->buffer2;
-                }}
+                return Anonymous.buffer2.AsSpan();
             }}
         }}
 
@@ -1438,10 +1461,15 @@ namespace ClangSharp.Test
                 {{
                     get
                     {{
-                        fixed (MyUnion* pThis = &e0)
-                        {{
-                            return ref pThis[index];
-                        }}
+                        return ref AsSpan()[index];
+                    }}
+                }}
+
+                public unsafe Span<MyUnion> AsSpan()
+                {{
+                    fixed (MyUnion* pThis = &e0)
+                    {{
+                        return new Span<MyUnion>(pThis, 4);
                     }}
                 }}
             }}

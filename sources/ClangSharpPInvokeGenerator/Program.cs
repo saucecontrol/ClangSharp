@@ -113,6 +113,7 @@ namespace ClangSharp
                     {
                         configOptions |= PInvokeGeneratorConfigurationOptions.GenerateCompatibleCode;
                         configOptions &= ~PInvokeGeneratorConfigurationOptions.GeneratePreviewCode;
+                        configOptions &= ~PInvokeGeneratorConfigurationOptions.GenerateCompatibleIfdef;
                         break;
                     }
 
@@ -155,6 +156,7 @@ namespace ClangSharp
                     case "generate-compatible-ifdef":
                     {
                         configOptions |= PInvokeGeneratorConfigurationOptions.GenerateCompatibleIfdef;
+                        configOptions &= ~PInvokeGeneratorConfigurationOptions.GenerateCompatibleCode;
                         break;
                     }
 

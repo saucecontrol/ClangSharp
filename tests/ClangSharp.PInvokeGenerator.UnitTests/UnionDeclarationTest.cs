@@ -143,10 +143,15 @@ namespace ClangSharp.Test
             {{
                 get
                 {{
-                    fixed (MyUnion* pThis = &e0)
-                    {{
-                        return ref pThis[index];
-                    }}
+                    return ref AsSpan()[index];
+                }}
+            }}
+
+            public unsafe Span<MyUnion> AsSpan()
+            {{
+                fixed (MyUnion* pThis = &e0)
+                {{
+                    return new Span<MyUnion>(pThis, 3);
                 }}
             }}
         }}
@@ -208,7 +213,10 @@ namespace ClangSharp.Test
                 }}
             }}
 
-            public Span<MyUnion> AsSpan() => MemoryMarshal.CreateSpan(ref e0, 3);
+            public Span<MyUnion> AsSpan()
+            {{
+                return MemoryMarshal.CreateSpan(ref e0, 3);
+            }}
         }}
     }}
 }}
@@ -266,10 +274,15 @@ namespace ClangSharp.Test
             {{
                 get
                 {{
-                    fixed (MyUnion* pThis = &e0)
-                    {{
-                        return ref pThis[index];
-                    }}
+                    return ref AsSpan()[index];
+                }}
+            }}
+
+            public unsafe Span<MyUnion> AsSpan()
+            {{
+                fixed (MyUnion* pThis = &e0)
+                {{
+                    return new Span<MyUnion>(pThis, 3);
                 }}
             }}
         }}
@@ -334,7 +347,10 @@ namespace ClangSharp.Test
                 }}
             }}
 
-            public Span<MyUnion> AsSpan() => MemoryMarshal.CreateSpan(ref e0, 3);
+            public Span<MyUnion> AsSpan()
+            {{
+                return MemoryMarshal.CreateSpan(ref e0, 3);
+            }}
         }}
     }}
 }}

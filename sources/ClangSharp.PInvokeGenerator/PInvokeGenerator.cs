@@ -685,12 +685,40 @@ namespace ClangSharp
             {
                 case CXCallingConv.CXCallingConv_C:
                 {
-                    return isForFnptr ? "unmanaged[Cdecl]" : "Cdecl";
+                    if (isForFnptr)
+                    {
+                        if (_config.GenerateUnixTypes && !_config.GenerateCompatibleCode && !_config.GenerateCompatibleIfdef)
+                        {
+                            return "unmanaged";
+                        }
+                        else
+                        {
+                            return "unmanaged[Cdecl]";
+                        }
+                    }
+                    else
+                    {
+                        return "Cdecl";
+                    }
                 }
 
                 case CXCallingConv.CXCallingConv_X86StdCall:
                 {
-                    return isForFnptr ? "unmanaged[Stdcall]" : "StdCall";
+                    if (isForFnptr)
+                    {
+                        if (!_config.GenerateUnixTypes && !_config.GenerateCompatibleCode && !_config.GenerateCompatibleIfdef)
+                        {
+                            return "unmanaged";
+                        }
+                        else
+                        {
+                            return "unmanaged[Stdcall]";
+                        }
+                    }
+                    else
+                    {
+                        return "StdCall";
+                    }
                 }
 
                 case CXCallingConv.CXCallingConv_X86FastCall:
@@ -707,7 +735,7 @@ namespace ClangSharp
                 {
                     if (isForFnptr)
                     {
-                        if (_config.GenerateCompatibleCode)
+                        if (_config.GenerateCompatibleCode || _config.GenerateCompatibleIfdef)
                         {
                             return _config.GenerateUnixTypes ? "unmanaged[Cdecl]" : "unmanaged[Stdcall]";
                         }
